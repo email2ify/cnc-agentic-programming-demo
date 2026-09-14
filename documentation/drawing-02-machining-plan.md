@@ -3,13 +3,13 @@
 ## Workpiece
 
 - Process: CNC turning
-- Finished maximum length: 65 mm
-- Raw stock diameter: Ø30 mm
-- Recommended blank length: 75–80 mm for facing, holding and parting
-- Material: To be confirmed
+- Raw stock: Ø30 × 65 mm
+- Finished component length: 50 mm
+- Approximate workholding allowance: 15 mm
+- Material: Cast iron, exact grade to be confirmed
 - Units: Millimetres
-- Programming mode: X values expressed as diameters
-- Work origin: Z0 on finished front face; X0 on spindle centreline
+- X programming: Diameter mode
+- Work origin: X0 on spindle centreline and Z0 on finished front face
 
 ## Proposed tools
 
@@ -34,3 +34,27 @@
 9. Machine the C1 chamfer.
 10. Inspect critical diameters and lengths.
 11. Part off or reverse the component to finish the rear face.
+
+
+## Provisional simulation parameters
+
+These values are for demonstration and simulation only. Actual values must
+be verified against the cast-iron grade, insert manufacturer's data and machine limits.
+
+| Operation | Cutting speed | Feed | Radial depth |
+|---|---:|---:|---:|
+| Facing | 140 m/min | 0.15 mm/rev | As required |
+| Rough turning | 140 m/min | 0.25 mm/rev | 1.5–2.0 mm |
+| Finish turning | 160 m/min | 0.10 mm/rev | 0.2–0.4 mm |
+| Grooving | 100 m/min | 0.08 mm/rev | Tool-dependent |
+| M12×1 threading | 50–80 m/min | 1.00 mm/rev | Multiple passes |
+| Parting | 80–100 m/min | 0.06 mm/rev | Tool-dependent |
+
+## Safety assumptions
+
+- Carbide inserts suitable for cast iron
+- Maximum spindle speed limited with G50
+- Constant surface speed enabled only after safe positioning
+- Dry machining or suitable extraction preferred for cast-iron dust
+- Tool offsets and insert nose radius require machine-side verification
+- Program must pass graphical simulation and single-block prove-out
