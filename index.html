@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>CNC Agentic Programming Demo</title>
+
+  <meta
+    name="description"
+    content="AI-assisted CNC turning demonstration with CAD models, controller programs and toolpath simulation."
+  >
+
+  <link rel="stylesheet" href="web/styles.css">
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <header class="site-header">
+    <a class="brand" href="#">CNC Agentic Programming</a>
+
+    <nav aria-label="Main navigation">
+      <a href="#viewer">3D Viewer</a>
+      <a href="#programs">Programs</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#safety">Safety</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-content">
+        <p class="eyebrow">AI-assisted manufacturing demonstration</p>
+
+        <h1>Drawing-to-CNC workflow with human verification</h1>
+
+        <p class="hero-text">
+          A cast-iron turning project demonstrating drawing analysis,
+          parametric CAD generation, Fanuc programming and simulated
+          toolpath verification.
+        </p>
+
+        <div class="hero-actions">
+          <a class="button primary" href="#viewer">Explore 3D model</a>
+
+          <a
+            class="button secondary"
+            href="simulation/O0202_DRAWING_02_PROFILE_SIM.nc"
+            download
+          >
+            Download simulation code
+          </a>
+        </div>
+      </div>
+
+      <dl class="project-facts">
+        <div>
+          <dt>Material</dt>
+          <dd>Cast iron</dd>
+        </div>
+
+        <div>
+          <dt>Raw stock</dt>
+          <dd>Ø30 × 65 mm</dd>
+        </div>
+
+        <div>
+          <dt>Finished length</dt>
+          <dd>50 mm</dd>
+        </div>
+
+        <div>
+          <dt>Process</dt>
+          <dd>CNC turning</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section id="viewer" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Interactive CAD</p>
+          <h2>Turning digital twin workspace</h2>
+        <p>
+            A browser-based training view linking the component, machine context
+            and fetched controller program.
+        </p>
+      </div>
+
+      <div class="status-strip" aria-label="Digital twin status">
+        <span><b>Controller</b> FANUC candidate</span>
+        <span><b>Units</b> Metric / G21</span>
+        <span><b>Programming</b> Diameter / G18</span>
+        <span><b>Material</b> Cast iron</span>
+        <span><b>Stock</b> Ø30 × 65 mm</span>
+        <span><b>Finished</b> 50 mm</span>
+        <strong class="approval-badge">Educational digital twin - not machine approved</strong>
+      </div>
+
+      <div class="workspace-card">
+        <div class="viewer-column">
+        <div class="viewer-controls" role="group" aria-label="Model controls">
+          <button class="model-button active" data-model="finished">
+            Finished part
+          </button>
+
+          <button class="model-button" data-model="stock">
+            Raw stock
+          </button>
+
+          <button class="model-button" data-model="compare">Compare</button>
+          <button class="model-button" data-model="machine">Machine view</button>
+          <button id="reset-view">Reset view</button>
+        </div>
+
+        <div
+          id="model-viewer"
+          aria-label="Interactive three-dimensional CNC component"
+        >
+          <p id="viewer-status">Loading 3D model...</p>
+        </div>
+        <p class="viewer-note">Training visualization only. No collision detection, material removal, or controller-certified behavior is calculated.</p>
+        </div>
+
+        <aside class="program-panel" id="programs" aria-label="CNC program workspace">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Controller program</p><h3>Block-by-block preview</h3></div>
+            <label for="program-select">Program
+              <select id="program-select"><option value="simulation/O0202_DRAWING_02_PROFILE_SIM.nc">Profile simulation</option><option value="programs/fanuc/O0202_DRAWING_02_DEMO.nc">Fanuc demo</option><option disabled>Mori Seiki - controller unconfirmed</option></select>
+            </label>
+          </div>
+          <p id="program-status" class="program-status">Loading NC program...</p>
+          <div id="gcode-display" class="gcode-display" tabindex="0" aria-label="Fetched G-code"></div>
+          <div class="program-controls" role="group" aria-label="Program controls">
+            <button id="play-program">Play</button><button id="pause-program">Pause</button><button id="previous-block">Previous block</button><button id="next-block">Next block</button><button id="reset-program">Reset</button>
+            <label>Speed <select id="simulation-speed"><option value="1200">0.5x</option><option value="650" selected>1x</option><option value="300">2x</option><option value="120">5x</option></select></label>
+          </div>
+          <dl class="machine-readout"><div><dt>Position X</dt><dd id="position-x">--</dd></div><div><dt>Position Z</dt><dd id="position-z">--</dd></div><div><dt>Spindle</dt><dd id="spindle-speed">--</dd></div><div><dt>Feed</dt><dd id="feed-rate">--</dd></div><div><dt>Tool</dt><dd id="active-tool">--</dd></div></dl>
+          <p class="cycle-warning">Controller cycle - visual approximation only: <span id="cycle-state">none detected</span></p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="tools" class="section">
+      <div class="section-heading"><p class="eyebrow">Tooling</p><h2>Demonstration tool library</h2></div>
+      <div class="info-card tools-card">
+        <label for="tool-select">Active tool
+          <select id="tool-select"><option value="T0101">T0101 - external turning / facing</option><option value="T0202">T0202 - grooving</option><option value="T0303">T0303 - 60-degree threading</option><option value="T0404">T0404 - parting</option></select>
+        </label>
+        <dl class="tool-readout"><div><dt>Operation</dt><dd id="tool-operation">Facing and OD turning</dd></div><div><dt>Insert</dt><dd id="tool-insert">CNMG / DNMG carbide</dd></div><div><dt>Feed</dt><dd id="tool-feed">0.15 mm/rev</dd></div><div><dt>Speed</dt><dd id="tool-speed">140 m/min</dd></div></dl>
+        <p class="small-note">Verify cutting values against the actual cast-iron grade, insert manufacturer and machine limits.</p>
+      </div>
+    </section>
+
+    <section id="controller-candidates" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Controller programs</p>
+        <h2>CNC program candidates</h2>
+      </div>
+
+      <div class="card-grid">
+        <article class="info-card">
+          <span class="status">Available</span>
+          <h3>Fanuc turning program</h3>
+          <p>
+            Structured facing, roughing, finishing, grooving, threading
+            and parting operations.
+          </p>
+
+          <a href="programs/fanuc/O0202_DRAWING_02_DEMO.nc">
+            View Fanuc code
+          </a>
+        </article>
+
+        <article class="info-card">
+          <span class="status pending">Planned</span>
+          <h3>Mori Seiki program</h3>
+          <p>
+            A controller-specific candidate will be produced after the
+            exact MAPPS, Fanuc or Mitsubishi control is identified.
+          </p>
+        </article>
+
+        <article class="info-card">
+          <span class="status">Verified visually</span>
+          <h3>NC Viewer profile</h3>
+          <p>
+            Browser-tested finished-contour toolpath using lathe diameter
+            mode.
+          </p>
+
+          <a href="simulation/O0202_DRAWING_02_PROFILE_SIM.nc">
+            View simulation file
+          </a>
+        </article>
+      </div>
+    </section>
+
+    <section id="workflow" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Agentic workflow</p>
+        <h2>From drawing to evidence</h2>
+      </div>
+
+      <ol class="workflow-list">
+        <li><strong>Analyse</strong><span>Extract dimensions and assumptions.</span></li>
+        <li><strong>Model</strong><span>Generate reproducible CAD geometry.</span></li>
+        <li><strong>Program</strong><span>Create controller-specific candidates.</span></li>
+        <li><strong>Simulate</strong><span>Inspect the toolpath before machine review.</span></li>
+        <li><strong>Verify</strong><span>Require qualified human and machine checks.</span></li>
+      </ol>
+    </section>
+
+    <section id="safety" class="section safety-panel">
+      <p class="eyebrow">Safety boundary</p>
+      <h2>Simulation and demonstration only</h2>
+
+      <p>
+        These programs are not approved for physical machine operation.
+        The exact machine, controller manual, tooling, offsets, workholding,
+        clearances, spindle direction and cutting conditions must be
+        verified by a qualified CNC professional before use.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      CNC Agentic Programming Demo · AI-assisted, human-verified engineering
+    </p>
+  </footer>
+
+  <script type="module" src="web/app.js"></script>
+</body>
+</html>
