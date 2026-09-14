@@ -28,7 +28,8 @@
     <a class="brand" href="#">CNC Agentic Programming</a>
 
     <nav aria-label="Main navigation">
-      <a href="#viewer">3D Viewer</a>
+      <a href="#cad-workspace">CAD</a>
+      <a href="#viewer">CAM</a>
       <a href="#programs">Programs</a>
       <a href="#workflow">Workflow</a>
       <a href="#safety">Safety</a>
@@ -36,6 +37,11 @@
   </header>
 
   <main>
+    <div class="workspace-tabs" role="tablist" aria-label="Connected engineering workspaces">
+      <button class="workspace-tab active" role="tab" aria-selected="true" data-workspace-tab="cad">CAD Workspace</button>
+      <button class="workspace-tab" role="tab" aria-selected="false" data-workspace-tab="cam">CAM Workspace</button>
+    </div>
+
     <section class="hero">
       <div class="hero-content">
         <p class="eyebrow">AI-assisted manufacturing demonstration</p>
@@ -49,7 +55,7 @@
         </p>
 
         <div class="hero-actions">
-          <a class="button primary" href="#viewer">Explore 3D model</a>
+          <a class="button primary" href="#cad-workspace" data-open-workspace="cad">Explore CAD workspace</a>
 
           <a
             class="button secondary"
@@ -84,9 +90,42 @@
       </dl>
     </section>
 
-    <section id="viewer" class="section">
+    <section id="cad-workspace" class="section workspace-panel active" data-workspace="cad" role="tabpanel">
       <div class="section-heading">
-        <p class="eyebrow">Interactive CAD</p>
+        <p class="eyebrow">CAD - Computer-Aided Design</p>
+        <h2>Engineering model workspace</h2>
+        <p>Drawing evidence, model dimensions and coordinate assumptions stay connected to the downstream CAM plan.</p>
+      </div>
+      <div class="cad-grid">
+        <article class="info-card">
+          <span class="status">Feature inventory</span>
+          <h3>Drawing-defined features</h3>
+          <ul class="feature-list">
+            <li>M12×1 thread</li><li>Ø9 relief</li><li>Ø12 step</li><li>Ø10-to-Ø16 taper</li><li>R3/R4 transition</li><li>Ø24 flange</li><li>C1 chamfer</li>
+          </ul>
+          <p class="small-note">Feature labels reflect the source drawing. Unavailable tolerances and exact material grade are not inferred.</p>
+        </article>
+        <article class="info-card">
+          <span class="status">Model definition</span>
+          <h3>Dimension table</h3>
+          <table class="dimension-table"><thead><tr><th>Feature</th><th>Source dimension</th></tr></thead><tbody>
+            <tr><td>Raw stock</td><td>Ø30 × 65 mm</td></tr><tr><td>Finished length</td><td>50 mm</td></tr><tr><td>Thread</td><td>M12×1</td></tr><tr><td>Relief</td><td>Ø9</td></tr><tr><td>Taper</td><td>Ø16 to Ø10</td></tr><tr><td>Transition radii</td><td>R3 / R4</td></tr><tr><td>Tolerances</td><td>Not specified in source drawing</td></tr>
+          </tbody></table>
+        </article>
+        <article class="info-card cad-evidence-card">
+          <span class="status">Evidence and datum</span>
+          <h3>CAD evidence</h3>
+          <dl class="evidence-list"><div><dt>Material</dt><dd>Cast iron; exact grade not specified in source drawing</dd></div><div><dt>Origin</dt><dd>X0 spindle centreline / Z0 finished right face</dd></div><div><dt>Axes</dt><dd><label class="switch-label"><input id="toggle-axes" type="checkbox" checked> Show X/Z axes</label></dd></div></dl>
+          <div class="asset-links"><a href="cad/exports/drawing-02-cnc-component.step" download>Download finished STEP</a><a href="cad/exports/drawing-02-cnc-component.stl" download>Download finished STL</a><a href="cad/drawing-02.FCStd" download>Download Fusion FCStd</a><a href="cad/exports/drawing-02-raw-stock.step" download>Download raw-stock STEP</a></div>
+          <div class="doc-links"><a href="documentation/drawing-02-coordinate-analysis.md">Drawing analysis</a><a href="documentation/drawing-02-machining-plan.md">Machining plan</a></div>
+          <a class="button secondary" href="#viewer" data-open-workspace="cam">Continue to CAM Workspace</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="viewer" class="section workspace-panel" data-workspace="cam" role="tabpanel" hidden>
+      <div class="section-heading">
+        <p class="eyebrow">CAM - Computer-Aided Manufacturing</p>
           <h2>Turning digital twin workspace</h2>
         <p>
             A browser-based training view linking the component, machine context
@@ -101,13 +140,17 @@
         <span><b>Material</b> Cast iron</span>
         <span><b>Stock</b> Ø30 × 65 mm</span>
         <span><b>Finished</b> 50 mm</span>
-        <strong class="approval-badge">Educational digital twin - not machine approved</strong>
+        <strong class="approval-badge">EDUCATIONAL CAM VISUALIZATION — NOT MACHINE APPROVED</strong>
       </div>
+
+      <ol class="operation-timeline" aria-label="CAM operation timeline">
+        <li>Facing</li><li>Rough turning</li><li>Finish turning</li><li>Grooving</li><li>M12×1 threading</li><li>Parting</li>
+      </ol>
 
       <div class="workspace-card">
         <div class="viewer-column">
         <div class="viewer-controls" role="group" aria-label="Model controls">
-          <button class="model-button active" data-model="finished">
+          <button class="model-button" data-model="finished">
             Finished part
           </button>
 
@@ -116,7 +159,9 @@
           </button>
 
           <button class="model-button" data-model="compare">Compare</button>
-          <button class="model-button" data-model="machine">Machine view</button>
+          <button class="model-button" data-model="cutting">Experimental Cutting Concept</button>
+          <button class="model-button active" data-model="machine" aria-pressed="true">Machine view</button>
+          <button class="model-button" data-model="free">Free 3D view</button>
           <button id="reset-view">Reset view</button>
         </div>
 
@@ -126,7 +171,8 @@
         >
           <p id="viewer-status">Loading 3D model...</p>
         </div>
-        <p class="viewer-note">Training visualization only. No collision detection, material removal, or controller-certified behavior is calculated.</p>
+        <p class="viewer-note"><strong>X0</strong> = spindle centreline · <strong>Z0</strong> = free finished right face. This conceptual animation does not calculate verified stock removal. Use the linked NC Viewer workflow for toolpath inspection.</p>
+        <div class="cutting-reference"><div><strong>DRAWING 02 PROFILE</strong><span>Side-on reference · not to scale</span></div><svg viewBox="0 0 420 96" role="img" aria-label="Drawing 02 profile reference"><path d="M20 26H84V34H110V42H180L220 52L264 52Q286 52 300 62Q316 72 340 72H400V82H20Z"/><path d="M20 70H84V62H110V54H180L220 44L264 44Q286 44 300 34Q316 24 340 24H400V14H20Z"/></svg><div class="reference-labels"><span>M12×1</span><span>Ø9 relief</span><span>Ø12 step</span><span>Ø10→Ø16 taper</span><span>R3/R4</span><span>Ø24 flange</span></div><div class="cutting-legend"><span><i class="swatch stock"></i>Uncut stock</span><span><i class="swatch removed"></i>Removed layer</span><span><i class="swatch finished"></i>Finished surface</span><span><i class="swatch rapid"></i>Rapid</span><span><i class="swatch feed"></i>Feed/cutting</span></div></div>
         </div>
 
         <aside class="program-panel" id="programs" aria-label="CNC program workspace">
@@ -137,13 +183,16 @@
             </label>
           </div>
           <p id="program-status" class="program-status">Loading NC program...</p>
+          <p id="program-hint" class="program-hint" hidden>Select Fanuc Demo to view facing, roughing, finishing, grooving, threading and parting.</p>
           <div id="gcode-display" class="gcode-display" tabindex="0" aria-label="Fetched G-code"></div>
           <div class="program-controls" role="group" aria-label="Program controls">
             <button id="play-program">Play</button><button id="pause-program">Pause</button><button id="previous-block">Previous block</button><button id="next-block">Next block</button><button id="reset-program">Reset</button>
             <label>Speed <select id="simulation-speed"><option value="1200">0.5x</option><option value="650" selected>1x</option><option value="300">2x</option><option value="120">5x</option></select></label>
           </div>
           <dl class="machine-readout"><div><dt>Position X</dt><dd id="position-x">--</dd></div><div><dt>Position Z</dt><dd id="position-z">--</dd></div><div><dt>Spindle</dt><dd id="spindle-speed">--</dd></div><div><dt>Feed</dt><dd id="feed-rate">--</dd></div><div><dt>Tool</dt><dd id="active-tool">--</dd></div></dl>
-          <p class="cycle-warning">Controller cycle - visual approximation only: <span id="cycle-state">none detected</span></p>
+          <dl class="sync-readout"><div><dt>Operation</dt><dd id="current-operation">Ready</dd></div><div><dt>Program phase</dt><dd id="current-pass">--</dd></div><div><dt>Current block</dt><dd id="current-block">--</dd></div><div><dt>Diameter at contact</dt><dd id="contact-diameter">Ø30.00</dd></div><div><dt>Visual state</dt><dd id="remaining-stock">Unverified</dd></div><div><dt>Progress</dt><dd id="simulation-progress">0%</dd></div></dl>
+          <p class="cycle-warning">Controller candidate: FANUC syntax; Mori Seiki compatibility is unconfirmed. Controller cycle - visual approximation only: <span id="cycle-state">none detected</span></p>
+          <p id="comparison-status" class="comparison-status" hidden>Visual profile comparison complete</p>
         </aside>
       </div>
     </section>
@@ -157,6 +206,7 @@
         <dl class="tool-readout"><div><dt>Operation</dt><dd id="tool-operation">Facing and OD turning</dd></div><div><dt>Insert</dt><dd id="tool-insert">CNMG / DNMG carbide</dd></div><div><dt>Feed</dt><dd id="tool-feed">0.15 mm/rev</dd></div><div><dt>Speed</dt><dd id="tool-speed">140 m/min</dd></div></dl>
         <p class="small-note">Verify cutting values against the actual cast-iron grade, insert manufacturer and machine limits.</p>
       </div>
+      <div class="info-card cutting-data-card"><h3>Demonstration cutting data</h3><table class="dimension-table"><thead><tr><th>Operation</th><th>Vc</th><th>Feed</th><th>ap</th></tr></thead><tbody><tr><td>Facing</td><td>140 m/min</td><td>0.15 mm/rev</td><td>As required</td></tr><tr><td>Rough turning</td><td>140 m/min</td><td>0.25 mm/rev</td><td>1.5-2.0 mm</td></tr><tr><td>Finish turning</td><td>160 m/min</td><td>0.10 mm/rev</td><td>0.2-0.4 mm</td></tr><tr><td>Grooving</td><td>100 m/min</td><td>0.08 mm/rev</td><td>Tool-dependent</td></tr><tr><td>Threading</td><td>50-80 m/min</td><td>1.00 mm/rev</td><td>Multiple passes</td></tr><tr><td>Parting</td><td>80-100 m/min</td><td>0.06 mm/rev</td><td>Tool-dependent</td></tr></tbody></table><p class="small-note">Provisional simulation values only. Verify against material grade, insert data and machine limits.</p></div>
     </section>
 
     <section id="controller-candidates" class="section">
@@ -207,6 +257,7 @@
       <div class="section-heading">
         <p class="eyebrow">Agentic workflow</p>
         <h2>From drawing to evidence</h2>
+        <p>Drawing → CAD model → CAM plan → Controller program → Simulation → Human verification</p>
       </div>
 
       <ol class="workflow-list">

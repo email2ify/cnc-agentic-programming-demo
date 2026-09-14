@@ -1,28 +1,28 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
-
 const $ = (selector) => document.querySelector(selector);
 const container = $("#model-viewer");
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
-camera.position.set(90, 55, 95);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
+const cuttingCamera = new THREE.OrthographicCamera(-180, 180, 110, -110, 0.1, 1000);
+let activeCamera = camera;
+camera.position.set(96, 50, 108);
+cuttingCamera.position.set(0, 0, 220);
+cuttingCamera.up.set(0, 1, 0);
+cuttingCamera.lookAt(0, 0, 0);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
-const controls = new OrbitControls(camera, renderer.domElement);
+const controls = new OrbitControls(activeCamera, renderer.domElement);
 controls.enableDamping = true;
+controls.target.set(0, 2, 0);
 scene.add(new THREE.HemisphereLight(0xd8efff, 0x15283b, 2.4));
-const keyLight = new THREE.DirectionalLight(0xffffff, 3.2);
-keyLight.position.set(70, 90, 80);
-scene.add(keyLight);
-const fillLight = new THREE.DirectionalLight(0x35c2ff, 1.8);
-fillLight.position.set(-70, 20, -50);
-scene.add(fillLight);
-const grid = new THREE.GridHelper(180, 18, 0x466781, 0x1a3348);
-grid.position.y = -16;
-scene.add(grid);
+const light = new THREE.DirectionalLight(0xffffff, 3.4);
+light.position.set(70, 90, 80);
+scene.add(light);
+scene.add(new THREE.GridHelper(190, 19, 0x466781, 0x1a3348));
 const modelGroup = new THREE.Group();
 modelGroup.rotation.y = Math.PI / 2;
 scene.add(modelGroup);
@@ -30,172 +30,77 @@ const machineGroup = new THREE.Group();
 machineGroup.visible = false;
 scene.add(machineGroup);
 const spindleGroup = new THREE.Group();
-machineGroup.add(spindleGroup);
+const traceGroup = new THREE.Group();
+const overlayGroup = new THREE.Group();
+const chipGroup = new THREE.Group();
+machineGroup.add(spindleGroup, traceGroup, overlayGroup, chipGroup);
+const profileGroup = new THREE.Group();
+machineGroup.add(profileGroup);
+const axisGroup = new THREE.Group();
+scene.add(axisGroup);
 const loader = new STLLoader();
+const zZero = 51;
+const stockBackZ = -65;
+const gripZ = -50;
+const sampleCount = 166;
+const envelope = new Float32Array(sampleCount).fill(15);
+const initialEnvelope = new Float32Array(envelope);
+const home = { x: zZero + 22, y: 26, z: 0 };
+const tools = {};
+const state = { lines: [], blocks: [], index: 0, playing: false, paused: false, processing: false, cutting: false, x: 32, z: 2, feed: 0, spindle: 0, commandedSpindle: 0, tool: "--", mode: "G00", spindleOn: false, traces: 0, overlays: 0, turret: 0, pass: 0, totalPasses: 0, operation: "Ready" };
+let session = 0;
 let finishedMesh;
 let stockMesh;
-let toolTip;
-let currentModel = "finished";
+let proceduralStock;
+let stockGeometry;
+let contactGlow;
+let turret;
+let spindleAxis;
 let spindleAngle = 0;
-const state = { lines: [], blocks: [], index: 0, playing: false, timer: 0, x: 32, z: 2, spindle: 0, feed: 0, tool: "--" };
-
-function material(color, opacity = 1) {
-  return new THREE.MeshStandardMaterial({ color, metalness: 0.58, roughness: 0.3, transparent: opacity < 1, opacity });
-}
-function box(size, color, position, parent = machineGroup, opacity = 1) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material(color, opacity));
-  mesh.position.set(...position);
-  parent.add(mesh);
-  return mesh;
-}
-function cylinder(radius, length, color, position, rotation = [0, 0, 0], parent = spindleGroup) {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 32), material(color));
-  mesh.position.set(...position);
-  mesh.rotation.set(...rotation);
-  parent.add(mesh);
-  return mesh;
-}
-function loadSTL(path, meshMaterial) {
-  return new Promise((resolve, reject) => loader.load(path, (geometry) => {
-    geometry.computeVertexNormals();
-    geometry.translate(0, 0, 32.5);
-    resolve(new THREE.Mesh(geometry, meshMaterial));
-  }, undefined, reject));
-}
-function buildMachine() {
-  box([170, 5, 90], 0x263b48, [0, -18, 0]);
-  box([170, 90, 4], 0x314958, [0, 28, -44], machineGroup, 0.42);
-  box([4, 90, 88], 0x314958, [-84, 28, 0], machineGroup, 0.48);
-  box([4, 90, 88], 0x314958, [84, 28, 0], machineGroup, 0.48);
-  box([65, 32, 54], 0x45545b, [-44, 1, 0]);
-  cylinder(24, 14, 0x8b9aa0, [-8, 1, 0], [0, 0, Math.PI / 2]);
-  for (let jaw = 0; jaw < 3; jaw += 1) {
-    const angle = jaw * Math.PI * 2 / 3;
-    box([6, 18, 8], 0x17252d, [-8 + Math.cos(angle) * 14, 1 + Math.sin(angle) * 14, 0], spindleGroup);
-  }
-  cylinder(7, 58, 0xb77445, [22, 1, 0], [0, 0, Math.PI / 2]);
-  box([14, 4, 42], 0xd8a64d, [22, -8, 0]);
-  box([18, 5, 8], 0xd8a64d, [22, 0, 0]);
-  box([22, 18, 22], 0x51636b, [61, 0, 0]);
-  toolTip = box([8, 5, 5], 0x55d98d, [28, 7, 0]);
-  cylinder(12, 12, 0x8b9aa0, [55, 1, 0], [0, 0, Math.PI / 2]);
-  const light = new THREE.PointLight(0xffe7ad, 2, 130);
-  light.position.set(0, 35, 0);
-  machineGroup.add(light);
-  box([12, 12, 5], 0xc7d3d7, [-68, 67, 32]);
-  const origin = new THREE.AxesHelper(16);
-  origin.position.set(0, 1, 0);
-  machineGroup.add(origin);
-}
-function updateView(name) {
-  currentModel = name;
-  finishedMesh.visible = name === "finished" || name === "compare";
-  stockMesh.visible = name === "stock" || name === "compare";
-  machineGroup.visible = name === "machine";
-  document.querySelectorAll(".model-button").forEach((button) => {
-    const selected = button.dataset.model === name;
-    button.classList.toggle("active", selected);
-    button.setAttribute("aria-pressed", String(selected));
-  });
-}
-function resize() {
-  const width = container.clientWidth;
-  const height = Math.max(container.clientHeight, 420);
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
-}
-function parseBlock(text, index) {
-  const get = (letter) => {
-    const match = text.match(new RegExp(`${letter}(-?\\d+(?:\\.\\d+)?)`, "i"));
-    return match ? Number(match[1]) : null;
-  };
-  return { index, x: get("X"), z: get("Z"), feed: get("F"), speed: get("S"), rapid: /G00/i.test(text), feedMove: /G0?1/i.test(text), tool: text.match(/T\d{4}/i)?.[0] || null, cycle: text.match(/G(70|71|76)/i)?.[0] || null };
-}
-function syntax(line) {
-  return line.replace(/\(.*?\)/g, '<span class="comment">$&</span>').replace(/\b([GMT]\d+(?:\.\d+)?)\b/gi, '<span class="code">$&</span>').replace(/\b([XYZFS]-?\d+(?:\.\d+)?)\b/gi, '<span class="coordinate">$&</span>');
-}
-function renderProgram() {
-  $("#gcode-display").innerHTML = state.lines.map((line, index) => `<div class="gcode-line${index === state.index ? " current" : ""}"><span>${String(index + 1).padStart(3, "0")}</span><code>${syntax(line || " ")}</code></div>`).join("");
-  const current = state.blocks[state.index];
-  if (!current) return;
-  if (current.x !== null) state.x = current.x;
-  if (current.z !== null) state.z = current.z;
-  if (current.feed !== null) state.feed = current.feed;
-  if (current.speed !== null) state.spindle = current.speed;
-  if (current.tool) state.tool = current.tool;
-  $("#position-x").textContent = `${state.x.toFixed(2)} mm`;
-  $("#position-z").textContent = `${state.z.toFixed(2)} mm`;
-  $("#spindle-speed").textContent = `${state.spindle || 0} rpm`;
-  $("#feed-rate").textContent = `${state.feed || 0} mm/rev`;
-  $("#active-tool").textContent = state.tool;
-  $("#cycle-state").textContent = current.cycle ? `${current.cycle} detected` : "none detected";
-  if (toolTip) {
-    toolTip.position.set((state.z || 0) + 20, (state.x || 0) / 2, 0);
-    toolTip.material.color.set(current.feedMove ? 0xffa62b : 0x55d98d);
-  }
-  const currentLine = $("#gcode-display .current");
-  if (currentLine) currentLine.scrollIntoView({ block: "nearest" });
-}
-async function loadProgram(path) {
-  state.playing = false;
-  $("#program-status").textContent = "Loading NC program...";
-  try {
-    const response = await fetch(path);
-    if (!response.ok) throw new Error("Program request failed");
-    state.lines = (await response.text()).split(/\r?\n/);
-    state.blocks = state.lines.map(parseBlock);
-    state.index = 0;
-    $("#program-status").textContent = `${state.lines.length} fetched blocks | visual approximation`;
-    renderProgram();
-  } catch (error) {
-    $("#program-status").textContent = "Program unavailable. Start the site through a local HTTP server.";
-  }
-}
-function step(direction) {
-  state.index = Math.max(0, Math.min(state.lines.length - 1, state.index + direction));
-  renderProgram();
-}
+function cncToScene({ x, z }) { return { x: zZero + z, y: x / 2, z: 0 }; }
+function createMaterial(color, opacity = 1) { return new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.3, transparent: opacity < 1, opacity }); }
+function createBox(size, color, position, parent = machineGroup, opacity = 1) { const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), createMaterial(color, opacity)); mesh.position.set(...position); parent.add(mesh); return mesh; }
+function createCylinder(radius, length, color, position, rotation = [0, 0, 0], parent = spindleGroup) { const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 32), createMaterial(color)); mesh.position.set(...position); mesh.rotation.set(...rotation); parent.add(mesh); return mesh; }
+function loadSTL(path, meshMaterial) { return new Promise((resolve, reject) => loader.load(path, (geometry) => { geometry.computeVertexNormals(); geometry.translate(0, 0, 32.5); resolve(new THREE.Mesh(geometry, meshMaterial)); }, undefined, reject)); }
+function zAt(index) { return stockBackZ + Math.abs(stockBackZ) * index / (sampleCount - 1); }
+function rebuildStock() { if (stockGeometry) stockGeometry.dispose(); const profile = []; const outline = []; for (let index = 0; index < sampleCount; index += 1) { const axial = zAt(index); const radius = envelope[index]; profile.push(new THREE.Vector2(radius, axial)); const point = cncToScene({ x: radius * 2, z: axial }); outline.push(new THREE.Vector3(point.x, point.y, 0.8)); } stockGeometry = new THREE.LatheGeometry(profile, 48); stockGeometry.rotateZ(Math.PI / 2); stockGeometry.translate(zZero, 1, 0); if (!proceduralStock) { proceduralStock = new THREE.Mesh(stockGeometry, createMaterial(0xb77445, 0.88)); machineGroup.add(proceduralStock); } else proceduralStock.geometry = stockGeometry; profileGroup.children.forEach((child) => { child.geometry.dispose(); child.material.dispose(); }); profileGroup.clear(); profileGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(outline), new THREE.LineBasicMaterial({ color: 0x74d4d0, transparent: true, opacity: 0.9 }))); }
+function updateStock(start, end) { const targetRadius = Math.max(0.2, Math.abs(end.x) / 2); const low = Math.min(start.z, end.z); const high = Math.max(start.z, end.z); const width = state.tool === "T0202" || state.tool === "T0404" ? 1 : 0.35; const boundary = state.tool === "T0404" ? gripZ - width : gripZ; let changed = false; for (let index = 0; index < sampleCount; index += 1) { const sampleZ = zAt(index); if (sampleZ >= low - width && sampleZ <= high + width && sampleZ >= boundary && envelope[index] > targetRadius) { envelope[index] = targetRadius; changed = true; } } if (changed) rebuildStock(); }
+function resetStock() { envelope.set(initialEnvelope); rebuildStock(); }
+function radiusAt(target) { let radius = 15; for (let index = 0; index < sampleCount; index += 1) if (Math.abs(zAt(index) - target) <= 1) radius = Math.min(radius, envelope[index]); return radius; }
+function diagnostics(operation) { state.operation = operation; const tip = cncToScene({ x: state.x, z: state.z }); const changed = envelope.filter((value, index) => value < initialEnvelope[index]).length; Object.assign(container.dataset, { activeTool: state.tool, toolTipX: state.x, toolTipZ: state.z, toolTipSceneX: tip.x, toolTipSceneY: tip.y, turretIndex: state.turret, operation, pass: state.pass, totalPasses: state.totalPasses, currentBlock: state.index + 1, playing: state.playing, cutting: state.cutting, spindleOn: state.spindleOn, spindle: state.spindle, traces: state.traces, overlays: state.overlays, stockMinRadius: Math.min(...envelope).toFixed(3), stockRadiusAtZMinus11: radiusAt(-11).toFixed(3), stockRadiusAtZMinus50: radiusAt(-50).toFixed(3), stockChangedSamples: changed, remainingStockPercent: Math.max(0, 100 - changed / sampleCount * 100).toFixed(1), progress: state.lines.length ? (state.index / (state.lines.length - 1) * 100).toFixed(1) : "0.0", geometryCount: 1 + traceGroup.children.length + overlayGroup.children.length }); $("#current-operation").textContent = operation; $("#current-pass").textContent = state.totalPasses ? `${state.pass}/${state.totalPasses}` : "--"; $("#current-block").textContent = `${state.index + 1}/${state.lines.length}`; $("#contact-diameter").textContent = `Ø${Math.abs(state.x).toFixed(2)}`; $("#remaining-stock").textContent = `${Math.max(0, 100 - changed / sampleCount * 100).toFixed(1)}%`; $("#simulation-progress").textContent = `${state.lines.length ? (state.index / (state.lines.length - 1) * 100).toFixed(1) : "0.0"}%`; }
+function clearGenerated() { traceGroup.children.forEach((child) => { child.geometry.dispose(); child.material.dispose(); }); overlayGroup.children.forEach((child) => { child.geometry.dispose(); child.material.dispose(); }); chipGroup.children.forEach((child) => { child.geometry.dispose(); child.material.dispose(); }); traceGroup.clear(); overlayGroup.clear(); chipGroup.clear(); state.traces = 0; state.overlays = 0; state.cutting = false; if (contactGlow) contactGlow.visible = false; }
+function addTrace(from, to, color) { const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(from.x, from.y, from.z), new THREE.Vector3(to.x, to.y, to.z)]); traceGroup.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color }))); state.traces += 1; }
+function addRadialPass(z, outerDiameter, innerDiameter, color = 0xffa62b) { const outer = cncToScene({ x: outerDiameter, z }); const inner = cncToScene({ x: innerDiameter, z }); const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(outer.x, outer.y, 1.2), new THREE.Vector3(inner.x, inner.y, 1.2)]); traceGroup.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.88 }))); state.traces += 1; }
+function addThreadOverlay() { for (let pass = 0; pass < 5; pass += 1) { const points = []; for (let index = 0; index <= 24; index += 1) { const point = cncToScene({ x: 10.917 + pass * 0.35, z: -1 - index * 8.5 / 24 }); points.push(new THREE.Vector3(point.x, point.y, Math.sin(index * Math.PI / 3) * 1.4)); } overlayGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xff6b6b }))); state.overlays += 1; } }
+function buildTools() { const definitions = { T0101: ["external turning/facing", "profile", 0x35c2ff], T0202: ["grooving", "groove", 0xffa62b], T0303: ["60-degree threading", "thread", 0xff6b6b], T0404: ["parting", "parting", 0x55d98d] }; Object.entries(definitions).forEach(([code, [operation, pattern, color]], index) => { const group = new THREE.Group(); const holder = createBox([18, 5, 5], 0x657983, [0, 0, 0], group); const tip = createBox([5, 3, 3], color, [9, 0, 0], group); group.position.set(home.x, home.y + index * 7, 0); group.visible = false; machineGroup.add(group); tools[code] = { code, group, holder, tip, home: group.position.clone(), tipReference: tip.position.clone(), operation, pattern }; }); }
+function buildMachine() { createBox([180, 5, 100], 0x243945, [0, -18, 0]); createBox([180, 90, 4], 0x53666d, [0, 28, -48], machineGroup, 0.3); createBox([4, 90, 94], 0x53666d, [-88, 28, 0], machineGroup, 0.38); createBox([4, 90, 94], 0x53666d, [88, 28, 0], machineGroup, 0.38); createBox([55, 32, 54], 0x3c5058, [-45, 1, 0]); createCylinder(24, 14, 0x9aa9ad, [-8, 1, 0], [0, 0, Math.PI / 2]); for (let jaw = 0; jaw < 3; jaw += 1) { const angle = jaw * Math.PI * 2 / 3; createBox([6, 18, 8], 0x17252d, [-8 + Math.cos(angle) * 14, 1 + Math.sin(angle) * 14, 0], spindleGroup); } createCylinder(7, 58, 0xb77445, [22, 1, 0], [0, 0, Math.PI / 2]); createBox([16, 4, 45], 0xd8a64d, [25, -8, 0]); createBox([18, 5, 8], 0xd8a64d, [25, 0, 0]); createBox([22, 18, 22], 0x51636b, [63, 0, 0]); createCylinder(12, 12, 0x8b9aa0, [56, 1, 0], [0, 0, Math.PI / 2]); const machineLight = new THREE.PointLight(0xffe7ad, 2.2, 145); machineLight.position.set(5, 35, 0); machineGroup.add(machineLight); spindleAxis = new THREE.AxesHelper(18); spindleAxis.position.set(zZero, 1, 0); machineGroup.add(spindleAxis); axisGroup.add(new THREE.AxesHelper(18)); const origin = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 16), createMaterial(0xffd166)); origin.position.set(zZero, 1, 0); machineGroup.add(origin); turret = new THREE.Group(); turret.position.set(home.x, home.y, 0); const disc = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 4, 12), createMaterial(0x687b84)); disc.rotation.x = Math.PI / 2; turret.add(disc); machineGroup.add(turret); contactGlow = new THREE.Mesh(new THREE.SphereGeometry(2.3, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.78 })); contactGlow.visible = false; machineGroup.add(contactGlow); buildTools(); rebuildStock(); }
+function updateView(view) { container.dataset.view = view; container.dataset.cameraType = view === "cutting" ? "orthographic" : "perspective"; if (view === "cutting") { activeCamera = cuttingCamera; controls.object = activeCamera; controls.enableRotate = false; controls.enableZoom = true; controls.minZoom = 0.8; controls.maxZoom = 1.35; activeCamera.position.set(0, 18, 260); activeCamera.lookAt(0, 18, 0); controls.target.set(0, 18, 0); } else { activeCamera = camera; controls.object = activeCamera; controls.enableRotate = view === "free" || view === "finished" || view === "stock" || view === "compare"; controls.enableZoom = true; if (view === "machine") { camera.position.set(250, 130, 270); controls.target.set(0, 8, 0); } } if (finishedMesh) finishedMesh.visible = view === "finished" || view === "compare"; if (stockMesh) stockMesh.visible = view === "stock" || view === "compare"; machineGroup.visible = view === "machine" || view === "compare" || view === "cutting"; if (proceduralStock) proceduralStock.visible = view === "machine" || view === "compare" || view === "cutting"; if (finishedMesh) { finishedMesh.material.transparent = view === "compare"; finishedMesh.material.opacity = view === "compare" ? 0.42 : 1; } document.querySelectorAll(".model-button").forEach((button) => { const selected = button.dataset.model === view; button.classList.toggle("active", selected); button.setAttribute("aria-pressed", String(selected)); }); }
+function parseProgram(text) { let mode = "G00"; let x = 32; let z = 2; let feed = 0; let commandedSpindle = 0; let speed = 0; let spindleOn = false; let tool = "--"; return text.split(/\r?\n/).map((line, index) => { const code = line.replace(/\(.*?\)/g, ""); const g = code.match(/G0?([01])\b/i); if (g) mode = `G0${g[1]}`; const get = (letter, fallback) => { const match = code.match(new RegExp(`${letter}(-?\\d+(?:\\.\\d+)?)`, "i")); return match ? Number(match[1]) : fallback; }; x = get("X", x); z = get("Z", z); feed = get("F", feed); commandedSpindle = get("S", commandedSpindle); const match = code.match(/T\d{4}/i); const toolCode = match ? match[0].toUpperCase() : null; if (toolCode) tool = toolCode; if (/M0[34]\b/i.test(code)) { spindleOn = true; speed = commandedSpindle; } if (/M05\b|M30\b|^%\s*$/i.test(code)) { spindleOn = false; speed = 0; } return { index, line, x, z, feed, speed, commandedSpindle, tool, toolCode, spindleOn, mode, rapid: mode === "G00", feedMove: mode === "G01", cycle: code.match(/G(70|71|76)/i)?.[0] || null, motion: /G0?[01]\b/i.test(code) || /N\d+.*[XZ]/i.test(code) }; }); }
+function applyBlock(block) { state.x = block.x; state.z = block.z; state.feed = block.feed; state.spindle = block.speed; state.commandedSpindle = block.commandedSpindle; state.mode = block.mode; state.spindleOn = block.spindleOn; if (block.tool !== "--") state.tool = block.tool; $("#position-x").textContent = `${state.x.toFixed(2)} mm`; $("#position-z").textContent = `${state.z.toFixed(2)} mm`; $("#spindle-speed").textContent = `${state.spindle} rpm`; $("#feed-rate").textContent = `${state.feed} mm/rev`; $("#active-tool").textContent = state.tool; }
+function motion(block, start, token) { return new Promise((resolve) => { const tool = tools[state.tool]; if (!tool) return resolve(); const origin = tool.group.position.clone(); const destination = cncToScene(block); const duration = Number($("#simulation-speed").value) * (block.rapid ? 0.45 : 1); const started = performance.now(); state.cutting = block.feedMove; if (state.cutting) { contactGlow.visible = true; contactGlow.position.set(destination.x, destination.y, destination.z); } function tick(now) { if (token !== session || !state.processing) { state.cutting = false; contactGlow.visible = false; return resolve(); } if (state.paused) return setTimeout(() => tick(performance.now()), 16); const progress = Math.min(1, (now - started) / duration); tool.group.position.lerpVectors(origin, new THREE.Vector3(destination.x - tool.tipReference.x, destination.y - tool.tipReference.y, destination.z - tool.tipReference.z), progress); diagnostics(state.cutting ? "cutting" : "rapid"); if (progress < 1) return setTimeout(() => tick(performance.now()), 16); if (block.feedMove) updateStock(start, block); addTrace({ x: origin.x + tool.tipReference.x, y: origin.y + tool.tipReference.y, z: 0 }, destination, block.rapid ? 0x35c2ff : 0xffa62b); state.cutting = false; contactGlow.visible = false; resolve(); } tick(performance.now()); }); }
+async function processBlock(block, token) { if (!block || token !== session) return; state.processing = true; renderProgram(); const start = { x: state.x, z: state.z }; if (block.toolCode) { setTool(block.toolCode); updateToolCard(block.toolCode); await new Promise((resolve) => setTimeout(resolve, 100)); } if (block.cycle === "G71" && state.tool === "T0101") { state.totalPasses = 4; for (let pass = 1; pass <= state.totalPasses; pass += 1) { state.pass = pass; diagnostics(`Roughing pass ${pass}/${state.totalPasses}`); updateStock({ x: 32 - (pass - 1) * 2, z: 0 }, { x: 30 - pass * 4, z: -50 }); addRadialPass(-5 * pass, 30 - (pass - 1) * 4, 30 - pass * 4); addTrace(cncToScene({ x: 32 - (pass - 1) * 2, z: 1 }), cncToScene({ x: 30 - pass * 4, z: -50 }), 0xffa62b); await new Promise((resolve) => setTimeout(resolve, Number($("#simulation-speed").value))); } } else if (block.cycle === "G70" && state.tool === "T0101") { state.totalPasses = 1; state.pass = 1; diagnostics("Finish contour"); [[12, -10], [9, -14], [12, -18], [16, -38], [24, -45], [24, -50]].forEach(([x, z]) => { updateStock({ x: 30, z: 1 }, { x, z }); addRadialPass(z, 30, x, 0x74d4d0); }); } else if (block.cycle === "G76") { state.totalPasses = 5; for (let pass = 1; pass <= state.totalPasses; pass += 1) { state.pass = pass; diagnostics(`Threading pass ${pass}/${state.totalPasses}`); addThreadOverlay(); await new Promise((resolve) => setTimeout(resolve, Number($("#simulation-speed").value) / 2)); } } if (block.motion && (block.x !== start.x || block.z !== start.z)) await motion(block, start, token); if (token !== session) return; applyBlock(block); state.processing = false; diagnostics(block.cycle ? `${block.cycle} approximation` : block.feedMove ? "cutting" : block.rapid ? "rapid" : "idle"); }
+function setTool(code) { const tool = tools[code]; if (!tool) return; Object.values(tools).forEach((item) => { item.group.visible = false; item.group.position.copy(item.home); }); state.turret = (state.turret + 1) % 12; turret.rotation.z = state.turret * Math.PI / 6; tool.group.visible = true; state.tool = code; $("#active-tool").textContent = code; $("#tool-select").value = code; }
+function updateToolCard(code) { const details = { T0101: ["Facing and OD turning", "CNMG / DNMG carbide", "0.15 mm/rev", "140 m/min"], T0202: ["Relief groove", "MGMN carbide", "0.08 mm/rev", "100 m/min"], T0303: ["M12 x 1 external thread", "60-degree carbide", "1.00 mm/rev", "50-80 m/min"], T0404: ["Parting", "Parting insert", "0.06 mm/rev", "80-100 m/min"] }[code]; if (!details) return; $("#tool-operation").textContent = details[0]; $("#tool-insert").textContent = details[1]; $("#tool-feed").textContent = details[2]; $("#tool-speed").textContent = details[3]; }
+async function advance() { if (state.processing || state.index >= state.lines.length - 1) return; const token = session; await processBlock(state.blocks[state.index], token); if (token === session) { state.index += 1; renderProgram(); } }
+function resetVisualState() { session += 1; state.index = 0; state.playing = false; state.paused = false; state.processing = false; state.x = 32; state.z = 2; state.feed = 0; state.spindle = 0; state.commandedSpindle = 0; state.tool = "--"; state.mode = "G00"; state.spindleOn = false; state.turret = 0; Object.values(tools).forEach((tool) => { tool.group.visible = false; tool.group.position.copy(tool.home); }); if (turret) turret.rotation.z = 0; clearGenerated(); resetStock(); $("#position-x").textContent = "32.00 mm"; $("#position-z").textContent = "2.00 mm"; $("#spindle-speed").textContent = "0 rpm"; $("#feed-rate").textContent = "0 mm/rev"; $("#active-tool").textContent = "--"; diagnostics("reset"); }
+async function loadProgram(path) { resetVisualState(); updateView("machine"); const token = session; $("#comparison-status").hidden = true; $("#program-hint").hidden = !path.includes("PROFILE_SIM"); $("#program-status").textContent = "Loading NC program..."; const response = await fetch(path); const text = await response.text(); if (token !== session) return; state.lines = text.split(/\r?\n/); state.blocks = parseProgram(text); state.index = 0; $("#program-status").textContent = `${state.lines.length} fetched blocks | visual approximation`; renderProgram(); applyBlock(state.blocks[0]); diagnostics("ready"); }
+function renderProgram() { $("#gcode-display").innerHTML = state.lines.map((line, index) => `<div class="gcode-line${index === state.index ? " current" : ""}"><span>${String(index + 1).padStart(3, "0")}</span><code>${line.replace(/\(.*?\)/g, '<span class="comment">$&</span>').replace(/\b([GMT]\d+(?:\.\d+)?)\b/gi, '<span class="code">$&</span>').replace(/\b([XYZFS]-?\d+(?:\.\d+)?)\b/gi, '<span class="coordinate">$&</span>')}</code></div>`).join(""); const current = $("#gcode-display .current"); if (current) current.scrollIntoView({ block: "nearest" }); }
 document.querySelectorAll(".model-button").forEach((button) => button.addEventListener("click", () => updateView(button.dataset.model)));
-$("#reset-view").addEventListener("click", () => { camera.position.set(90, 55, 95); controls.target.set(0, 0, 0); controls.update(); });
+$("#reset-view").addEventListener("click", () => { camera.position.set(96, 50, 108); cuttingCamera.position.set(0, 0, 220); cuttingCamera.zoom = 1; cuttingCamera.updateProjectionMatrix(); activeCamera = camera; controls.object = activeCamera; controls.target.set(0, 2, 0); controls.enableRotate = true; controls.update(); });
 $("#program-select").addEventListener("change", (event) => loadProgram(event.target.value));
-$("#play-program").addEventListener("click", () => { state.playing = true; });
-$("#pause-program").addEventListener("click", () => { state.playing = false; });
-$("#previous-block").addEventListener("click", () => { state.playing = false; step(-1); });
-$("#next-block").addEventListener("click", () => { state.playing = false; step(1); });
-$("#reset-program").addEventListener("click", () => { state.playing = false; state.index = 0; renderProgram(); });
-$("#tool-select").addEventListener("change", (event) => {
-  const details = {
-    T0101: ["Facing and OD turning", "CNMG / DNMG carbide", "0.15 mm/rev", "140 m/min"],
-    T0202: ["Relief groove", "MGMN carbide", "0.08 mm/rev", "100 m/min"],
-    T0303: ["M12 x 1 external thread", "60-degree carbide", "1.00 mm/rev", "50-80 m/min"],
-    T0404: ["Parting", "Parting insert", "0.06 mm/rev", "80-100 m/min"]
-  }[event.target.value];
-  $("#tool-operation").textContent = details[0];
-  $("#tool-insert").textContent = details[1];
-  $("#tool-feed").textContent = details[2];
-  $("#tool-speed").textContent = details[3];
-});
+$("#play-program").addEventListener("click", async () => { if (state.processing) { state.paused = false; state.playing = true; return; } state.playing = true; state.paused = false; const token = session; while (state.playing && state.index < state.lines.length - 1 && token === session) await advance(); if (token === session) { state.playing = false; if ($("#program-select").value.includes("DEMO")) { updateView("compare"); $("#comparison-status").hidden = false; } diagnostics("complete"); } });
+$("#pause-program").addEventListener("click", () => { state.playing = false; state.paused = true; diagnostics("paused"); });
+$("#previous-block").addEventListener("click", () => { if (state.index > 0) { const previousIndex = state.index - 1; resetVisualState(); state.index = previousIndex; renderProgram(); } });
+$("#next-block").addEventListener("click", () => advance());
+$("#reset-program").addEventListener("click", () => { resetVisualState(); updateView("stock"); });
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-new ResizeObserver(resize).observe(container);
+new ResizeObserver(() => resize()).observe(container);
 buildMachine();
-Promise.all([loadSTL("cad/exports/drawing-02-cnc-component.stl", material(0x35c2ff)), loadSTL("cad/exports/drawing-02-raw-stock.stl", material(0xaeb8c2, 0.62))]).then(([finished, stock]) => { finishedMesh = finished; stockMesh = stock; modelGroup.add(finishedMesh, stockMesh); updateView("finished"); $("#viewer-status").hidden = true; resize(); }).catch(() => { $("#viewer-status").textContent = "The 3D models could not be loaded. Run this page through a local web server."; resize(); });
+$("#toggle-axes").addEventListener("change", (event) => { axisGroup.visible = event.target.checked; if (spindleAxis) spindleAxis.visible = event.target.checked; });
+document.querySelectorAll("[data-workspace-tab]").forEach((tab) => tab.addEventListener("click", () => { document.querySelectorAll("[data-workspace-tab]").forEach((item) => { const selected = item === tab; item.classList.toggle("active", selected); item.setAttribute("aria-selected", String(selected)); }); document.querySelectorAll(".workspace-panel").forEach((panel) => { panel.hidden = panel.dataset.workspace !== tab.dataset.workspaceTab; }); if (tab.dataset.workspaceTab === "cam") requestAnimationFrame(resize); }));
+Promise.all([loadSTL("cad/exports/drawing-02-cnc-component.stl", createMaterial(0x35c2ff)), loadSTL("cad/exports/drawing-02-raw-stock.stl", createMaterial(0xaeb8c2, 0.62))]).then(([finished, stock]) => { finishedMesh = finished; stockMesh = stock; modelGroup.add(finishedMesh, stockMesh); if (!container.dataset.view) updateView("finished"); $("#viewer-status").hidden = true; resize(); }).catch(() => { $("#viewer-status").textContent = "The 3D models could not be loaded. Run this page through a local web server."; resize(); });
 loadProgram($("#program-select").value);
 let lastTime = performance.now();
-function animate(time) {
-  requestAnimationFrame(animate);
-  const elapsed = time - lastTime;
-  lastTime = time;
-  if (state.playing && !reducedMotion) {
-    state.timer += elapsed;
-    if (state.timer > Number($("#simulation-speed").value)) {
-      state.timer = 0;
-      step(1);
-      if (state.index >= state.lines.length - 1) state.playing = false;
-    }
-  }
-  if (state.spindle && currentModel === "machine") { spindleAngle += elapsed * 0.004; spindleGroup.rotation.x = spindleAngle; }
-  controls.update();
-  renderer.render(scene, camera);
-}
+function animate(time) { requestAnimationFrame(animate); const elapsed = time - lastTime; lastTime = time; if (state.spindleOn && !reducedMotion) { spindleAngle += elapsed * 0.004; spindleGroup.rotation.x = spindleAngle; } controls.update(); renderer.render(scene, activeCamera); }
+function resize() { const width = container.clientWidth; const height = Math.max(container.clientHeight, 420); camera.aspect = width / height; camera.updateProjectionMatrix(); cuttingCamera.left = -width / height * 110; cuttingCamera.right = width / height * 110; cuttingCamera.top = 110; cuttingCamera.bottom = -110; cuttingCamera.updateProjectionMatrix(); renderer.setSize(width, height); }
 requestAnimationFrame(animate);
