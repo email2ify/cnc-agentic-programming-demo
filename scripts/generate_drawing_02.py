@@ -1,7 +1,10 @@
-import FreeCAD as App
-import Part
-from FreeCAD import Vector
+# pyright: reportMissingImports=false
 
+import FreeCAD as App
+import FreeCADGui as Gui
+import Part
+
+Vector = App.Vector
 doc = App.ActiveDocument
 
 if doc is None:
